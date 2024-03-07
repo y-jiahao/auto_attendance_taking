@@ -82,7 +82,7 @@ def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_ima
     combined_df = pd.merge(af_df, fn_df, on='identity')
     print('[*] '+str(len(combined_df))+' embeddings found in the database.')
 
-    files = [i for i in os.listdir(predfullpath) if i.endswith('.jpg')]
+    files = [i for i in os.listdir(predfullpath) if (i.endswith('.jpg') or i.endswith('.png'))]
     print('[*] '+str(len(files))+' images found for prediction.')
 
     total = 0

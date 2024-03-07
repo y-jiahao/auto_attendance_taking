@@ -89,7 +89,7 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
     combined_df = pd.merge(af_df, fn_df, on='identity')
     print('[*] '+str(len(combined_df))+' embeddings found in the database.')
 
-    files = [i for i in os.listdir(evalfullpath) if i.endswith('.jpg')]
+    files = [i for i in os.listdir(evalfullpath) if (i.endswith('.jpg') or i.endswith('.png'))]
     print('[*] '+str(len(files))+' images found for evaluation.')
 
     face_loc_df = pd.read_csv(os.path.join(dirname, eval_path+'/face_loc.csv'))
