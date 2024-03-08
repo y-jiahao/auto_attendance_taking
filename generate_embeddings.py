@@ -6,10 +6,12 @@ import pickle
 import time
 import numpy as np
 
+# generate normal embeddings
 def generate_normal_embeddings(model_name, db_path = 'database_images'):
     print('\n[PROCESS] Generating normal embeddings with '+model_name+'.')
     print('\n[STATUS] Checking dependencies...')
     
+    # check if GPU is available
     if len(tf.config.list_physical_devices('GPU')):
         print('[*] GPU device found.')
     else:
@@ -22,19 +24,23 @@ def generate_normal_embeddings(model_name, db_path = 'database_images'):
     dirname = os.path.dirname(__file__)
     fullpath = os.path.join(dirname, db_path)
 
+    # check if database_images folder exists
     if not os.path.isdir(fullpath):
         print('[ERROR] No '+db_path+' folder found.')
         return
     else:
         print('[*] '+db_path+' folder found.')
     
+    # build model
     build_model = DeepFace.modeling.build_model(model_name)
     
+    # create log file
     output_file_path = fullpath+"/log_normal_embeddings_"+model_name.lower()+".txt"
-
+    # clear log file
     with open(output_file_path, 'w') as f:
         f.write('')
 
+    # get all image files in the database_images folder
     files = [i for i in os.listdir(fullpath) if (i.endswith('.jpg') or i.endswith('.png'))]
 
     print('[*] '+str(len(files))+' images found in the database.')
@@ -50,6 +56,7 @@ def generate_normal_embeddings(model_name, db_path = 'database_images'):
         f = files[i]
         img_path = os.path.join(fullpath, f)
         try:
+            # extract face from image
             img_objs = DeepFace.detection.extract_faces(
                 img_path=img_path,
                 target_size=build_model.input_shape,
@@ -59,6 +66,7 @@ def generate_normal_embeddings(model_name, db_path = 'database_images'):
                 align=True,
             )
 
+            # get embedding for face
             for img_obj in img_objs:
                 img_content = img_obj["face"]
                 img_region = img_obj["facial_area"]
@@ -76,11 +84,13 @@ def generate_normal_embeddings(model_name, db_path = 'database_images'):
             errors.append(f)
     time_end = time.time()
 
+    # save embeddings to pickle file
     with open(f"{fullpath}/representations_{model_name.lower()}.pkl", "wb") as f:
         pickle.dump(embeddings, f)
 
     print('\n[STATUS] '+str(len(files))+' embeddings generated successfully.')
 
+    # write to log file
     with open(output_file_path, 'a') as f:
         # f.write(f'{model_name}\n')
         f.write(f'No. errors: {len(errors)}\n')
@@ -90,11 +100,12 @@ def generate_normal_embeddings(model_name, db_path = 'database_images'):
     if len(errors):
         print('[*] '+str(len(errors))+' errors found. Check the file log_normal_embeddings_'+model_name.lower()+'.txt for more details.')
 
-
+# generate ensemble embeddings
 def generate_ensemble_embeddings(model_name, db_path = 'database_images'):
     print('\n[PROCESS] Generating ensemble embeddings with '+model_name+'.')
     print('\n[STATUS] Checking dependencies...')
     
+    # check if GPU is available
     if len(tf.config.list_physical_devices('GPU')):
         print('[*] GPU device found.')
     else:
@@ -107,21 +118,26 @@ def generate_ensemble_embeddings(model_name, db_path = 'database_images'):
     dirname = os.path.dirname(__file__)
     fullpath = os.path.join(dirname, db_path)
 
+    # check if database_images folder exists
     if not os.path.isdir(fullpath):
         print('[ERROR] No '+db_path+' folder found.')
         return
     else:
         print('[*] '+db_path+' folder found.')
     
+    # build model
     build_model = DeepFace.modeling.build_model(model_name)
     
+    # create log file
     output_file_path = fullpath+"/log_ensemble_embeddings_"+model_name.lower()+".txt"
-
+    # clear log file
     with open(output_file_path, 'w') as f:
         f.write('')
 
+    # get all image files in the database_images folder
     files = [i for i in os.listdir(fullpath) if (i.endswith('.jpg') or i.endswith('.png'))]
 
+    # group images by identity
     files_grp = {}
     for f in files:
         image_num = f.split('_')[0]
@@ -147,6 +163,7 @@ def generate_ensemble_embeddings(model_name, db_path = 'database_images'):
         for f in f_list:
             img_path = os.path.join(fullpath, f)
             try:
+                # extract face from image
                 img_objs = DeepFace.detection.extract_faces(
                     img_path=img_path,
                     target_size=build_model.input_shape,
@@ -156,6 +173,7 @@ def generate_ensemble_embeddings(model_name, db_path = 'database_images'):
                     align=True,
                 )
 
+                # get embedding for face
                 for img_obj in img_objs:
                     img_content = img_obj["face"]
                     img_region = img_obj["facial_area"]
@@ -172,17 +190,20 @@ def generate_ensemble_embeddings(model_name, db_path = 'database_images'):
             except:
                 error += 1
         if error < 4:
+            # get ensemble embedding for identity by averaging
             combined_embeddings = np.mean(identity_embeddings, axis=0)
             embeddings.append([identity, combined_embeddings.tolist()])
         else:
             errors.append(identity)
     time_end = time.time()
 
+    # save embeddings to pickle file
     with open(f"{fullpath}/representations_ensemble_{model_name.lower()}.pkl", "wb") as f:
         pickle.dump(embeddings, f)
 
     print('\n[STATUS] '+str(len(files_grp))+' embeddings generated successfully.')
 
+    # write to log file
     with open(output_file_path, 'a') as f:
         # f.write(f'{model_name}\n')
         f.write(f'No. errors: {len(errors)}\n')

@@ -7,10 +7,12 @@ import pandas as pd
 import cv2
 import math
 
+# generate face_loc.csv
 def generate_face_loc(eval_path = 'evaluation_images'):
     print('\n[PROCESS] Generating face_loc.csv.')
     print('\n[STATUS] Checking dependencies...')
 
+    # check if GPU is available
     if len(tf.config.list_physical_devices('GPU')):
         print('[*] GPU device found.')
     else:
@@ -19,15 +21,18 @@ def generate_face_loc(eval_path = 'evaluation_images'):
     dirname = os.path.dirname(__file__)
     evalfullpath = os.path.join(dirname, eval_path)
 
+    # check if evaluation_images folder exists
     if not os.path.isdir(evalfullpath):
         print('[ERROR] No '+eval_path+' folder found.')
         return
     else:
         print('[*] '+eval_path+' folder found.')
 
+    # get all image files in the evaluation_images folder
     files = [i for i in os.listdir(evalfullpath) if i.endswith('.jpg')]
     print('[*] '+str(len(files))+' images found in '+eval_path+'.')
 
+    # build model
     af_build_model = DeepFace.modeling.build_model("ArcFace")
 
     face_loc = []
@@ -38,6 +43,7 @@ def generate_face_loc(eval_path = 'evaluation_images'):
         file = files[i]
         file_path = os.path.join(evalfullpath, file)
 
+        # extract face from image
         source_objs = DeepFace.detection.extract_faces(
             img_path=file_path,
             target_size=af_build_model.input_shape,
@@ -47,6 +53,7 @@ def generate_face_loc(eval_path = 'evaluation_images'):
             align=True
         )
 
+        # for each face extracted, get the facial area
         for source_obj in source_objs:
             source_region = source_obj["facial_area"]
 
@@ -57,6 +64,7 @@ def generate_face_loc(eval_path = 'evaluation_images'):
 
             face_loc.append([file, x, y, w, h, ""])
 
+    # save face_loc.csv
     face_loc_df = pd.DataFrame(face_loc, columns=['file', 'x', 'y', 'w', 'h', 'identity'])
     face_loc_df.to_csv(evalfullpath+'/face_loc.csv', index=False)
 

@@ -9,10 +9,12 @@ import math
 
 import utilities as ut
 
+# evaluate labelled images for attendance taking
 def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_images', result_path = 'evaluation_images/result_images', face_loc_path = 'evaluation_images/face_loc.csv'):
     print('\n[PROCESS] Evaluating images for attendance taking.')
     print('\n[STATUS] Checking dependencies...')
 
+    # check if GPU is available
     if len(tf.config.list_physical_devices('GPU')):
         print('[*] GPU device found.')
     else:
@@ -25,6 +27,7 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
     rep_fn512 = os.path.join(dirname, db_path+'/representations_facenet512.pkl')
     rep_af = os.path.join(dirname, db_path+'/representations_arcface.pkl')
 
+    # check if embeddings files exist
     if ensemble:
         if not os.path.isfile(rep_ensemble_fn512):
             print('[ERROR] No representations_ensemble_facenet512.pkl file found in '+db_path+'.')
@@ -44,32 +47,38 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
     resultfullpath = os.path.join(dirname, result_path)
     faclocfullpath = os.path.join(dirname, face_loc_path)
 
+    # check if evaluation_images folder exists
     if not os.path.isdir(evalfullpath):
         print('[ERROR] No '+eval_path+' folder found.')
         return
     else:
         print('[*] '+eval_path+' folder found.')
     
+    # check if evaluation_images/result_images folder exists
     if not os.path.isdir(resultfullpath):
         print('[ERROR] No '+result_path+' folder found.')
         return
     else:
         print('[*] '+result_path+' folder found.')
 
+    # check if face_loc.csv file exists
     if not os.path.isfile(faclocfullpath):
         print('[ERROR] No '+face_loc_path+' file found.')
         return
     else:
         print('[*] '+face_loc_path+' file found.')
     
+    # build AF model
     af_model_name = 'ArcFace'
     af_build_model = DeepFace.modeling.build_model(af_model_name)
     af_metric = 'cosine'
 
+    # build FN512 model
     fn_model_name = 'Facenet512'
     fn_build_model = DeepFace.modeling.build_model(fn_model_name)
     fn_metric = 'euclidean_l2'
 
+    # load embeddings
     if ensemble:
         with open(rep_ensemble_af, "rb") as f:
             af_embeddings = pickle.load(f)
@@ -89,11 +98,13 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
     combined_df = pd.merge(af_df, fn_df, on='identity')
     print('[*] '+str(len(combined_df))+' embeddings found in the database.')
 
+    # fetch all images in the evaluation_images folder
     files = [i for i in os.listdir(evalfullpath) if (i.endswith('.jpg') or i.endswith('.png'))]
     print('[*] '+str(len(files))+' images found for evaluation.')
 
     face_loc_df = pd.read_csv(os.path.join(dirname, eval_path+'/face_loc.csv'))
 
+    # check if face_loc.csv contains all the evaluation images
     for i in range(len(files)):
         file = files[i]
         if file not in face_loc_df['file'].values:
@@ -104,11 +115,12 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
     total = 0
     unknown = 0
 
+    # create log file
     if ensemble:
         output_file_path = evalfullpath+"/log_evaluationoutputs_ensemble.txt"
     else:
         output_file_path = evalfullpath+"/log_evaluationoutputs.txt"
-
+    # clear log file
     with open(output_file_path, 'w') as f:
         f.write('')
 
@@ -130,6 +142,7 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
         file_image = cv2.imread(file_path)
 
         for model_name, metric, target_size in [[af_model_name, af_metric, af_build_model.input_shape], [fn_model_name, fn_metric, fn_build_model.input_shape]]:
+            # extract faces from image
             source_objs = DeepFace.detection.extract_faces(
                 img_path=file_path,
                 target_size=target_size,
@@ -144,6 +157,7 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
                 margin = 20
                 try:
                     while True:
+                        # crop face from image and upscale it to 500px width
                         crop_img = file_image[max(source_region['y']-margin,0):min(source_region['y']+source_region['h']+margin, file_image.shape[0]), max(source_region['x']-margin,0):min(source_region['x']+source_region['w']+margin, file_image.shape[1])]
                         width = 500
                         scale = width / crop_img.shape[1]
@@ -151,6 +165,7 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
                         crop_img = cv2.resize(crop_img, (width, height))
                         cv2.imwrite(temp_path, crop_img)
 
+                        # extract face from upscaled image
                         temp_source_objs = DeepFace.detection.extract_faces(
                             img_path=temp_path,
                             target_size=target_size,
@@ -185,6 +200,7 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
 
                     source_img = source_obj["face"]      
 
+                # get target embedding for face
                 target_embedding_obj = DeepFace.represent(
                     img_path=source_img,
                     model_name=model_name,
@@ -202,6 +218,7 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
                 result_df["source_h"] = source_region["h"]
 
                 distances = []
+                # calculate distance between target and all embeddings in the database
                 for _, instance in combined_df.iterrows():
                     source_representation = instance[f"{model_name}_representation"]
 
@@ -226,6 +243,7 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
                 result_df = result_df.drop(columns=[f"{fn_model_name}_representation"])
                 result_df = result_df.sort_values(by=[f"{model_name}_distance"], ascending=True).reset_index(drop=True)
 
+                # merge distances from both models
                 if (source_region["x"], source_region["y"]) in resp_obj:
                     existing_df = pd.DataFrame(resp_obj[(source_region["x"], source_region["y"])])
                     merged_df = pd.merge(existing_df, result_df, on=['identity', 'source_x', 'source_y', 'source_w', 'source_h'])
@@ -239,11 +257,13 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
                     resp_obj[(source_region["x"], source_region["y"])] = result_df
 
         image = cv2.imread(file_path)
+
         if ensemble:  
             m_file_path = os.path.join(resultfullpath, file[:-4]+'_eval_ensemble.jpg')
         else:
             m_file_path = os.path.join(resultfullpath, file[:-4]+'_eval.jpg')
 
+        # annotate evaluation image with recognition results and save
         for face in resp_obj.values():
             face_df = pd.DataFrame(face)
             top_result = face_df.iloc[0]
@@ -273,10 +293,12 @@ def evaluation(ensemble, db_path= 'database_images', eval_path = 'evaluation_ima
         correct += file_correct
         unknown += file_unknown
 
+        # write image evaluation results to log file
         with open(output_file_path, 'a') as f:
             f.write(f'{file}\n')
             f.write(f'Accuracy: {file_correct}/{file_total} ({round(file_correct/file_total*100,2)}), Unknown: {file_unknown}\n\n')
 
+    # write total evaluation results to log file
     with open(output_file_path, 'a') as f:
         f.write(f'Total accuracy: {correct}/{total} ({round(correct/total*100,2)}), Unknown: {unknown}\n\n')
 

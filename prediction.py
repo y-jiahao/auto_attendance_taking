@@ -9,10 +9,12 @@ import math
 
 import utilities as ut
 
+# predict unlabelled images for attendance taking
 def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_images', result_path = 'prediction_images/result_images'):
     print('\n[PROCESS] Predicting images for attendance taking.')
     print('\n[STATUS] Checking dependencies...')
 
+    # check if GPU is available
     if len(tf.config.list_physical_devices('GPU')):
         print('[*] GPU device found.')
     else:
@@ -25,6 +27,7 @@ def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_ima
     rep_fn512 = os.path.join(dirname, db_path+'/representations_facenet512.pkl')
     rep_af = os.path.join(dirname, db_path+'/representations_arcface.pkl')
 
+    # check if embeddings files exists
     if ensemble:
         if not os.path.isfile(rep_ensemble_fn512):
             print('[ERROR] No representations_ensemble_facenet512.pkl file found in '+db_path+'.')
@@ -43,26 +46,31 @@ def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_ima
     predfullpath = os.path.join(dirname, pred_path)
     resultfullpath = os.path.join(dirname, result_path)
 
+    # check if prediction_images folder exists
     if not os.path.isdir(predfullpath):
         print('[ERROR] No '+pred_path+' folder found.')
         return
     else:
         print('[*] '+pred_path+' folder found.')
     
+    # check if prediction_images/result_images folder exists
     if not os.path.isdir(resultfullpath):
         print('[ERROR] No '+result_path+' folder found.')
         return
     else:
         print('[*] '+result_path+' folder found.')
     
+    # build AF model
     af_model_name = 'ArcFace'
     af_build_model = DeepFace.modeling.build_model(af_model_name)
     af_metric = 'cosine'
 
+    # build FN512 model
     fn_model_name = 'Facenet512'
     fn_build_model = DeepFace.modeling.build_model(fn_model_name)
     fn_metric = 'euclidean_l2'
 
+    # load embeddings
     if ensemble:
         with open(rep_ensemble_af, "rb") as f:
             af_embeddings = pickle.load(f)
@@ -82,16 +90,18 @@ def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_ima
     combined_df = pd.merge(af_df, fn_df, on='identity')
     print('[*] '+str(len(combined_df))+' embeddings found in the database.')
 
+    # fetch all image files in the prediction_images folder
     files = [i for i in os.listdir(predfullpath) if (i.endswith('.jpg') or i.endswith('.png'))]
     print('[*] '+str(len(files))+' images found for prediction.')
 
     total = 0
 
+    # create log file
     if ensemble:
         output_file_path = predfullpath+"/log_predictionoutputs_ensemble.txt"
     else:
         output_file_path = predfullpath+"/log_predictionoutputs.txt"
-
+    # clear log file
     with open(output_file_path, 'w') as f:
         f.write('')
 
@@ -112,6 +122,7 @@ def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_ima
         file_image = cv2.imread(file_path)
 
         for model_name, metric, target_size in [[af_model_name, af_metric, af_build_model.input_shape], [fn_model_name, fn_metric, fn_build_model.input_shape]]:
+            # extract faces from image
             source_objs = DeepFace.detection.extract_faces(
                 img_path=file_path,
                 target_size=target_size,
@@ -126,6 +137,7 @@ def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_ima
                 margin = 20
                 try:
                     while True:
+                        # crop face from image and upscale it to 500px width
                         crop_img = file_image[max(source_region['y']-margin,0):min(source_region['y']+source_region['h']+margin, file_image.shape[0]), max(source_region['x']-margin,0):min(source_region['x']+source_region['w']+margin, file_image.shape[1])]
                         width = 500
                         scale = width / crop_img.shape[1]
@@ -133,6 +145,7 @@ def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_ima
                         crop_img = cv2.resize(crop_img, (width, height))
                         cv2.imwrite(temp_path, crop_img)
 
+                        # extract face from upscaled image
                         temp_source_objs = DeepFace.detection.extract_faces(
                             img_path=temp_path,
                             target_size=target_size,
@@ -167,6 +180,7 @@ def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_ima
 
                     source_img = source_obj["face"]      
 
+                # get target embedding for face
                 target_embedding_obj = DeepFace.represent(
                     img_path=source_img,
                     model_name=model_name,
@@ -184,6 +198,7 @@ def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_ima
                 result_df["source_h"] = source_region["h"]
 
                 distances = []
+                # calculate distance between target and all embeddings in the database
                 for _, instance in combined_df.iterrows():
                     source_representation = instance[f"{model_name}_representation"]
 
@@ -208,6 +223,7 @@ def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_ima
                 result_df = result_df.drop(columns=[f"{fn_model_name}_representation"])
                 result_df = result_df.sort_values(by=[f"{model_name}_distance"], ascending=True).reset_index(drop=True)
 
+                # merge distances from both models
                 if (source_region["x"], source_region["y"]) in resp_obj:
                     existing_df = pd.DataFrame(resp_obj[(source_region["x"], source_region["y"])])
                     merged_df = pd.merge(existing_df, result_df, on=['identity', 'source_x', 'source_y', 'source_w', 'source_h'])
@@ -226,6 +242,7 @@ def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_ima
         else:
             m_file_path = os.path.join(resultfullpath, file[:-4]+'_pred.jpg')
 
+        # annotate evaluation image with recognition results and save
         for face in resp_obj.values():
             face_df = pd.DataFrame(face)
             top_result = face_df.iloc[0]
@@ -246,6 +263,7 @@ def prediction(ensemble, db_path= 'database_images', pred_path = 'prediction_ima
 
         total += file_total
 
+        # write image evaluation results to log file
         with open(output_file_path, 'a') as f:
             f.write(f'{file}\n')
             f.write(f'Number of faces identified: {file_total}\n')

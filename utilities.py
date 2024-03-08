@@ -1,5 +1,6 @@
 import cv2
 
+# draw_text function for annotating images
 def draw_text(img, text,
     font=cv2.FONT_HERSHEY_SIMPLEX,
     pos=(0,0),
